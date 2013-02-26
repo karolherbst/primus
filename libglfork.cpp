@@ -327,6 +327,12 @@ static void note_geometry(Display *dpy, Drawable draw, int *width, int *height)
   XGetGeometry(dpy, draw, &root, &x, &y, (unsigned *)width, (unsigned *)height, &bw, &d);
 }
 
+static bool isDedicatedSupportingCoreProfiles(Display *dpy)
+{
+  const char* extensions = primus.afns.glXGetClientString(dpy, GLX_EXTENSIONS);
+  return strstr(extensions, "GLX_ARB_create_context") != NULL;
+}
+
 static void* display_work(void *vd)
 {
   GLXDrawable drawable = (GLXDrawable)vd;
