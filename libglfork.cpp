@@ -517,6 +517,18 @@ GLXContext glXCreateContext(Display *dpy, XVisualInfo *vis, GLXContext shareList
   return actx;
 }
 
+GLXContext glXCreateContextAttribsARB(Display *dpy, GLXFBConfig config, GLXContext share_context, Bool direct, const int *attrib_list)
+{
+  if (isDedicatedSupportingCoreProfiles(dpy))
+  {
+    GLXContext actx = primus.afns.glXCreateContextAttribsARB(primus.adpy, config, share_context, direct, attrib_list);
+    primus.contexts.record(actx, config, share_context);
+    return actx;
+  }
+  // TODO: error string? But this should never happen, because we don't push out the Extensions string
+  return NULL;
+}
+
 GLXContext glXCreateNewContext(Display *dpy, GLXFBConfig config, int renderType, GLXContext shareList, Bool direct)
 {
   GLXContext actx = primus.afns.glXCreateNewContext(primus.adpy, config, renderType, shareList, direct);
@@ -870,13 +882,18 @@ const char *glXGetClientString(Display *dpy, int name)
   {
     case GLX_VENDOR: return "primus";
     case GLX_VERSION: return "1.4";
-    case GLX_EXTENSIONS: return "GLX_ARB_get_proc_address ";
+    case GLX_EXTENSIONS:
+      if(isDedicatedSupportingCoreProfiles(dpy))
+        return "GLX_ARB_create_context GLX_ARB_create_context_profile GLX_ARB_get_proc_address ";
+      return "GLX_ARB_get_proc_address ";
     default: return NULL;
   }
 }
 
 const char *glXQueryExtensionsString(Display *dpy, int screen)
 {
+  if(isDedicatedSupportingCoreProfiles(dpy))
+    return "GLX_ARB_create_context GLX_ARB_create_context_profile GLX_ARB_get_proc_address ";
   return "GLX_ARB_get_proc_address ";
 }
 
