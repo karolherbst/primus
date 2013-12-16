@@ -544,7 +544,7 @@ static void* readback_work(void *vd)
     if (primus.sync == 1) // Get the previous framebuffer
       primus.afns.glBindBuffer(GL_PIXEL_PACK_BUFFER_EXT, pbos[cbuf ^ 1]);
     double map_time = Profiler::get_timestamp();
-    GLvoid *pixeldata = primus.afns.glMapBuffer(GL_PIXEL_PACK_BUFFER_EXT, GL_READ_ONLY);
+    di.pixeldata = primus.afns.glMapBuffer(GL_PIXEL_PACK_BUFFER_EXT, GL_READ_ONLY);
     map_time = Profiler::get_timestamp() - map_time;
     sleep_usec = (map_time * 1e6 + sleep_usec) * primus.autosleep / 100;
     profiler.tick();
@@ -554,7 +554,6 @@ static void* readback_work(void *vd)
       primus_warn("dropping a frame to avoid deadlock\n");
     else
     {
-      di.pixeldata = pixeldata;
       sem_post(&di.d.acqsem);
       if (primus.sync)
       {
