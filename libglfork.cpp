@@ -81,7 +81,7 @@ struct CapturedFns {
 };
 
 // Drawable tracking info
-struct DrawableInfo {
+struct GLXDrawableInfo {
   // Only XWindow is not explicitely created via GLX
   enum {XWindow, Window, Pixmap, Pbuffer} kind;
   GLXFBConfig fbconfig;
@@ -133,27 +133,27 @@ struct DrawableInfo {
     __sync_synchronize();
     reinit = RESIZE;
   }
-  ~DrawableInfo();
+  ~GLXDrawableInfo();
 };
 
-struct DrawablesInfo: public std::map<GLXDrawable, DrawableInfo> {
+struct GLXDrawablesInfo: public std::map<GLXDrawable, GLXDrawableInfo> {
   bool known(GLXDrawable draw)
   {
     return this->find(draw) != this->end();
   }
 };
 
-struct ContextInfo {
+struct GLXContextInfo {
   GLXFBConfig fbconfig;
   int sharegroup;
 };
 
-struct ContextsInfo: public std::map<GLXContext, ContextInfo> {
+struct GLXContextsInfo: public std::map<GLXContext, GLXContextInfo> {
   void record(GLXContext ctx, GLXFBConfig config, GLXContext share)
   {
     static int nsharegroups;
     int sharegroup = share ? (*this)[share].sharegroup : nsharegroups++;
-    (*this)[ctx] = (ContextInfo){config, sharegroup};
+    (*this)[ctx] = (GLXContextInfo){config, sharegroup};
   }
 };
 
@@ -237,8 +237,8 @@ static struct PrimusInfo {
   CapturedFns afns;
   CapturedFns dfns;
   // FIXME: there are race conditions in accesses to these
-  DrawablesInfo drawables;
-  ContextsInfo contexts;
+  GLXDrawablesInfo drawables;
+  GLXContextsInfo contexts;
 
   PrimusInfo():
     adpy_str(getconf(PRIMUS_DISPLAY)),
@@ -376,7 +376,7 @@ static bool test_drawpixels_fast(Display *dpy, GLXContext ctx)
 static void* display_work(void *vd)
 {
   GLXDrawable drawable = (GLXDrawable)vd;
-  DrawableInfo &di = primus.drawables[drawable];
+  GLXDrawableInfo &di = primus.drawables[drawable];
   int width, height;
   static const float quad_vertex_coords[]  = {-1, -1, -1, 1, 1, 1, 1, -1};
   static const float quad_texture_coords[] = { 0,  0,  0, 1, 1, 1, 1,  0};
@@ -489,7 +489,7 @@ static void* display_work(void *vd)
 static void* readback_work(void *vd)
 {
   GLXDrawable drawable = (GLXDrawable)vd;
-  DrawableInfo &di = primus.drawables[drawable];
+  GLXDrawableInfo &di = primus.drawables[drawable];
   int width, height;
   GLuint pbos[2] = {0};
   int cbuf = 0;
@@ -623,12 +623,12 @@ void glXDestroyContext(Display *dpy, GLXContext ctx)
   // kludge: reap background tasks when deleting the last context
   // otherwise something will deadlock during unloading the library
   if (primus.contexts.empty())
-    for (DrawablesInfo::iterator i = primus.drawables.begin(); i != primus.drawables.end(); i++)
+    for (GLXDrawablesInfo::iterator i = primus.drawables.begin(); i != primus.drawables.end(); i++)
       i->second.reap_workers();
   primus.afns.glXDestroyContext(primus.adpy, ctx);
 }
 
-static GLXPbuffer create_pbuffer(DrawableInfo &di)
+static GLXPbuffer create_pbuffer(GLXDrawableInfo &di)
 {
   int pbattrs[] = {GLX_PBUFFER_WIDTH, di.width, GLX_PBUFFER_HEIGHT, di.height, GLX_PRESERVED_CONTENTS, True, None};
   return primus.afns.glXCreatePbuffer(primus.adpy, di.fbconfig, pbattrs);
@@ -640,7 +640,7 @@ static GLXPbuffer lookup_pbuffer(Display *dpy, GLXDrawable draw, GLXContext ctx)
   if (!draw)
     return 0;
   bool known = primus.drawables.known(draw);
-  DrawableInfo &di = primus.drawables[draw];
+  GLXDrawableInfo &di = primus.drawables[draw];
   if (!known)
   {
     // Drawable is a plain X Window. Get the FBConfig from the context
@@ -698,7 +698,7 @@ void glXSwapBuffers(Display *dpy, GLXDrawable drawable)
 {
   XFlush(dpy);
   assert(primus.drawables.known(drawable));
-  DrawableInfo &di = primus.drawables[drawable];
+  GLXDrawableInfo &di = primus.drawables[drawable];
   primus.afns.glXSwapBuffers(primus.adpy, di.pbuffer);
   if (di.kind == di.Pbuffer || di.kind == di.Pixmap)
     return;
@@ -739,7 +739,7 @@ void glXSwapBuffers(Display *dpy, GLXDrawable drawable)
 GLXWindow glXCreateWindow(Display *dpy, GLXFBConfig config, Window win, const int *attribList)
 {
   GLXWindow glxwin = primus.dfns.glXCreateWindow(dpy, get_dconfig(dpy), win, attribList);
-  DrawableInfo &di = primus.drawables[glxwin];
+  GLXDrawableInfo &di = primus.drawables[glxwin];
   di.kind = di.Window;
   di.fbconfig = config;
   di.window = win;
@@ -747,7 +747,7 @@ GLXWindow glXCreateWindow(Display *dpy, GLXFBConfig config, Window win, const in
   return glxwin;
 }
 
-DrawableInfo::~DrawableInfo()
+GLXDrawableInfo::~GLXDrawableInfo()
 {
   reap_workers();
   if (pbuffer)
@@ -764,7 +764,7 @@ void glXDestroyWindow(Display *dpy, GLXWindow window)
 GLXPbuffer glXCreatePbuffer(Display *dpy, GLXFBConfig config, const int *attribList)
 {
   GLXPbuffer pbuffer = primus.dfns.glXCreatePbuffer(dpy, get_dconfig(dpy), attribList);
-  DrawableInfo &di = primus.drawables[pbuffer];
+  GLXDrawableInfo &di = primus.drawables[pbuffer];
   di.kind = di.Pbuffer;
   di.fbconfig = config;
   for (int i = 0; attribList[i] != None; i++)
@@ -785,7 +785,7 @@ void glXDestroyPbuffer(Display *dpy, GLXPbuffer pbuf)
 GLXPixmap glXCreatePixmap(Display *dpy, GLXFBConfig config, Pixmap pixmap, const int *attribList)
 {
   GLXPixmap glxpix = primus.dfns.glXCreatePixmap(dpy, get_dconfig(dpy), pixmap, attribList);
-  DrawableInfo &di = primus.drawables[glxpix];
+  GLXDrawableInfo &di = primus.drawables[glxpix];
   di.kind = di.Pixmap;
   di.fbconfig = config;
   note_geometry(dpy, pixmap, &di.width, &di.height);
@@ -802,7 +802,7 @@ void glXDestroyPixmap(Display *dpy, GLXPixmap pixmap)
 GLXPixmap glXCreateGLXPixmap(Display *dpy, XVisualInfo *visual, Pixmap pixmap)
 {
   GLXPixmap glxpix = primus.dfns.glXCreateGLXPixmap(dpy, visual, pixmap);
-  DrawableInfo &di = primus.drawables[glxpix];
+  GLXDrawableInfo &di = primus.drawables[glxpix];
   di.kind = di.Pixmap;
   note_geometry(dpy, pixmap, &di.width, &di.height);
   GLXFBConfig *acfgs = match_fbconfig(dpy, visual);
